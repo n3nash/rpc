@@ -1,0 +1,116 @@
+Project 3: RPC-Based Proxy Server
+Introduction
+
+Remote Procedure Calls (RPC) are a powerful and commonly-used abstraction for constructing distributed applications. Sun (ONC) RPC is one of the oldest general-purpose RPC implementations and is popular in Unix environments, particularly because NFS is implemented using it.
+
+In this project, you will do the following:
+
+    Write a simple 'proxy server' using RPC.
+    Investigate and implement different caching schemes for your service.
+    Evaluate the performance of your service under different load conditions and using different caching schemes.
+
+This project has two basic goals: First is introducing you to programming with a real remote procedure call system. Sun (ONC) RPC may seem slightly dated, but it is widely deployed and has been used in many real distributed applications. Second is exploring the principles and performance of caching schemes in a distributed application.
+
+You should work in groups of two for this project.
+
+Originally this project requires multiple machines for your experiment. However, due to the lack of resources, experiments based on two machines for a client and a server is good. Since two of you work as a team in this project, you should have two machines at least. If you do not have two machines, ask TA(Kirak, hokira@gatech.edu) and he will allocate a time to access a lab machine. Note that you can do all developments at a single machine though.
+Specific Details
+
+You should do the following:
+
+    Implement an RPC based 'proxy server' and a client to use it. It will be almost like a simple proxy server except it does not have to implement the HTTP protocol and you won't be implementing any sockets-based communication; there is a library for that (as will be explained below). You should implement at least two distinct items: a RPC proxy server where a client can request a URL via RPC, and a simple client application that can perform these requests for performance analysis. These two pieces will run on different machines and communicate using Sun RPC. The RPC service should have at least one RPC call, signifying an HTTP GET request. The proxy will execute the HTTP GET on behalf of the requesting client and return the data to it. You don't have to implement your own mechanism for talking to a web server to perform this GET request: you can simply use libcurl (see below for examples). Your client should probably read a list of URLs indexed by line number and then randomly request entries. It should also have some mechanism for timing and calculating bytes transfered, connections per second, etc. If you want to make your applications more complicated or advanced, go nuts, but they should at least allow the previously described basic interactions.
+    Add a caching mechanism to your proxy server. It should be a limited in-memory cache and will have several replacement policies (more on the cache replacement policies later). This cache can be fairly simple and doesn't need to follow official HTTP cache control protocols or worry about the possibility of stale content or content expiration. It will simply hold the result of a specific request until another request for the same URL is made (at which point the request should be satisfied from the cached copy). Every time your server performs an HTTP GET to fulfull a client request that wasn't in the cache, it should add it to the cache. You also don't have to worry about canonicalizing URLs for uniqueness. (In other words, don't worry about the fact that http://www.google.com and http://www.google.com/index.html are actually the same thing.)
+        Your cache lookup shouldn't be completely brain-dead: you shouldn't need to look at every item in the cache to determine if an arbitrary request is cached (in other words, cache lookup should be sub-linear). This means you should probably use some sort of ordered tree or a hashing-based approach to lookup.
+    You will design and perform some experimental evaluations of your RPC-based proxy. You should come up with a reasonable set of traffic requests and configure your client to stress-test your proxy. You will test your proxy with no caching and then with each of your cache replacement policies. Your cache should be relatively small compared to the total set of possible requested documents because you want a lot of cache contention. You should measure the hit rates of your caches as well as the effect on performance (KB/sec, average time to fulfill a request, requests per second, etc. - it's up to you do decide on a good way to measure performance). You could also try varying the cache size. Analyze and justify your results in the write-up.
+
+The meat of this project will focus on cache replacement policies and experiments. Sun RPC and libcurl will allow you to implement a proxy server without the extra overhead of socket programming. You will also get some very basic experience using RPC. Again, the details of Sun RPC and libcurl should be a fairly small and trivial, so if you're spending a significant portion of your time on them, you're probably overlooking something. They aren't the hard part of your project, so don't get stuck!
+
+ 
+Replacement Policy
+
+A cache of any kind must have a replacement policy. This is the policy that is used whenever a new item is added to a full cache (in order to decide which old item to evict). That is, the new item replaces some other object in the cache. Some common strategies are:
+
+    Least Recently Used (LRU) -- remove the item that has been requested least recently. The idea is that items requested recently are more likely to be requested in the near future.
+    Least Frequently Used (LFU) -- remove the item that is accessed the least frequently. The idea is that the statistical behavior will continue over time, and thus that items used frequently in the past will be used frequently in the future.
+    First-In First-Out (FIFO) -- remove the item that has been in the cache the longest. The idea is that pollution by old items should be prevented. (This is different from LRU because it measures when the item was added to the cache; LRU measures when the item was last read.)
+    Random (RAND) -- remove an item at random. The idea is that, even if it does not perform maximally well, it will not perform maximally abysmal under any load.
+    Largest Size First (MAXS) -- remove the item which has the largest size, assuming that users are less likely to re-access large documents because of the high access delay associated with such documents.
+    LRU-MIN -- a variant of LRU which tries to minimize the number of documents replaced and gives preference to small-size documents to stay in the cache. If an incoming document with size S does not fit in the cache, the policy considers documents whose sizes are no less than S for eviction using the LRU policy. If there is no document with such size, the process is repeated for documents whose sizes are at least S/2, then documents whose sizes are at least S/4, and so on. See the paper Caching Proxies: Limitations and Potentials for more details about LRU-MIN.
+    Greedy-Dual-Size (GDS) -- removes the item with the lowest value of H. Each item starts off with a value of H = (cost of bringing the item to cache / size of the item). When an item is replaced, decrement all of the other items H values by the replaced item's H value. When items are accessed again, restore H to the original H value (cost / size). The cost function is parameterized.
+    Greedy-Dual-Size-Frequency (GDSF) -- even more complex modification of GDS. See Improving WWW Proxies Performance with Greedy-Dual- Size-Frequency Caching Policy
+
+For this project, you are to implement at least three policies:
+
+    Least Recently Used (this can be an approximation based on some fixed history or "absolute" based on time-stamps)
+    Random
+    Your choice of one other policy from the list above
+
+ Note that performance of different policies will depend on the queries that a client generates. Please specify how you generated thoese queries, e.g., using random / uniform distribution, and relate them to the performance measurements in your report.
+ONC RPC with rpcgen
+
+"Open Network Computing" RPC (or Sun RPC) is a widely-used protocol for RPC in different programming languages. It relies on an available service (RPC portmap) to handle binding and service location. ONC RPC also relies on the XDR standard (eXternal Data Representation) to define a common wire-format for structured data sent between machines. It also defines an interface definition language that can be used with rpcgen to automatically generate stub code for services (as well as marshalling and unmarshalling code). You should use rpcgen in your project. Check out the resources section for links to some tutorials on using rpcgen.
+
+Remember not to leak memory if you are sending variable-sized data across the wire (and you will need to). You are responsible for calling xdr_free in your svc code and also implementing freeresult. These will probably be as simple as calling xdr_free with the appropriate xdr procedure for the datatype you are attempting to free (the second parameter). For instance, if you have a service that takes in foo_in *in, you'd probably call xdr_free(xdr_foo_in, in); before you return.
+
+I have included a sample Makefile to show you how you will probably call rpcgen and how the rpcgen generated pieces might fit together. It assumes you named your interface definition proxy_rpc.x. The Makefile is just for illustrative purposes; you can feel free to tweak it or ignore it completely.
+
+The "-M" flag will generate multi-threaded safe RPC code, but the service will not be multi-threaded automatically (some platforms other than Linux have rpcgen with the -A flag, which will generate multi-threaded services). You may want to try making the RPC service use thread pools (by modifying the generated stub code). Remember to modify your Makefile if you edit the generated stubs so you don't blow away one of your custom files with an auto-generated one.
+rpcgen "gotchas" (or things to watch out for):
+
+Note that you cannot make RPC calls from hosts outside of the CoC network to inside the CoC network (this includes from LAWN or outlands on cc.gt.atl.ga.us). You can always make RPC calls between machines inside the CoC network, however.
+
+If you have trouble compiling your rpcgen-generated code with gcc-4.0, add the following to your interface definition file:
+
+%#undef IXDR_GET_LONG
+%#define IXDR_GET_LONG(buf) ((long)IXDR_GET_U_INT32(buf))
+%#undef IXDR_PUT_LONG
+%#define IXDR_PUT_LONG(buf, v) ((long)IXDR_PUT_INT32(buf, (long)(v)))
+
+On Linux, note that CLIENT* handles obtained from clnt_create are only valid for the same thread from which the were created (the CLIENT* must be used in the thread where you called clnt_create). This means, for a multi-threaded proxy client, each thread making RPC requests must call clnt_create to make a CLIENT* handle. This may or may not be true on other platforms.
+
+On Linux, rpcgen generates sample code where the client uses UDP rather than TCP. Since the maximum UDP packet size is 64k, this will artificially limit your request results to a rather small size and you may encounter errors when trying to request larger webpages. Please change the last argument of clnt_create from "udp" to "tcp" if your generated file is using UDP.
+
+ 
+libcurl
+
+libcurl is a powerful library for communicating with servers via HTTP (and FTP, LDAP, HTTPS, etc.). It supports HTTP GET/PUT/POST, form fields, cookies, etc. The purpose of using it in this assignment is to simplify your life. Instead of writing lower-level sockets code to talk HTTP to a webserver and request a page, you can simply use libcurl (which can do the same in a few function calls). In fact, you can just use the example code demonstrating how to perform a simple HTTP GET request. If you want to implement your own socket-based code to talk to the remote webserver, it will mean more work for you but you're welcome to do so (just remember that it is not the focus of this project).
+
+example.c is sample code that uses libcurl to perform an HTTP GET of a specified URL (the Makefile shows you how to compile it, but basically all you need to remember is to add -lcurl to link with the curl libraries). The resultant data (just the data, not the headers) is captured into a dynamically allocated buffer and then written to stdout. You can use this code with few modifications directly in the proxy to perform the proxy GET requests.
+
+If you have trouble with servers returning errors complaining about the lack of an HTTP User-Agent field, add a curl_easy_setopt(handle, CURLOPT_USERAGENT, "<agent name>"); before the curl action is performed.
+
+ 
+Resources
+
+The following documents have useful information on rpcgen, libcurl, and relevant network protocols. You will need to have a cursory understanding of the protocols in order to do this project, but do not bother becoming extremely knowledgable about them just for this project.
+
+    Using rpcgen
+    rpcgen Programming Guide
+    Writing RPC Applications with the rpcgen Protocol Compiler
+    libcurl C Interface overview
+    RFC 1821 - RPC: Remote Procedure Call Protocol Specification Version 2
+    RFC 1832 - XDR: External Data Representation Standard
+
+Note that the above rpcgen tutorials are for various platforms (FreeBSD, Digital Unix, etc.) and different platforms have slight differences in rpcgen and the various libraries. If you stick to the standard it should work transparently but beware of special capabilities. For instance, Solaris's rpcgen has a switch (-A) to generate a multi-threaded server which other platforms' rpcgen implementations do not typically have. When in doubt, check out the relevant man and info pages.
+
+Also, you should use the rpcgen tutorials as a general guide, but realize that you cannot just paste the auto-generated C code given in the tutorials and expect it to compile and work. You need to run rpcgen on your own platform to generate these files. rpcgen generates code from an interface definition file (the .x file), which is written in a platform independent interface definition language. That file is portable. However, the code generated by rpcgen is not necessarily portable (as it depends on the local supporting libraries for rpcgen, C libraries, etc. and may use different naming conventions, and different features). Take the .x interface file given in the tutorial and run "rpcgen -a -M" on it. This will generate a full suite of client and server stubs that are correct for your platform (and a Makefile). Also, consult your platform's rpcgen documentation (man or info pages) to determine the default naming convention for the output files.
+
+ 
+Suggestions
+
+Start by developing a toy service using rpcgen (e.g. a "Hello World" server, or a time service that just returns the current time). Create the RPC interface you'll need for your proxy server, and make sure that the client and proxy are talking (send a URL string to the proxy and print it out to make sure everything is received okay). Next try adding the page request logic (no need for caching yet - you can add that later). Make sure to sanity check your results. The client should receive the entire document that the proxy requested on its behalf (print the page to the screen, check sizes and make sure nothing is corrupted). Finally, when your basic proxy works, add the result caching (just get the simplest replacement policy working first, then once it's functional try implementing the others). Worry about performance analysis and benchmarking after you are sure that everything is in working order so you don't waste time collecting incorrect results. When you run the final tests, don't have a lot of unnecessary console output from either the proxy or client because console I/O is (relatively) slow, and a lot of it will significantly degrade your performance.
+
+ 
+Submission Instructions
+
+You must make your code work on Fedora 13.
+
+You should submit a single tar file which includes:
+
+    All your code (proxy server and client, plus any testing harness)
+    Makefile
+    README (explain how to build and how to run the experiments)
+    Experimental data
+    Your write-up (PDF)
+
+** You must submit to T-Square by the deadline, in order to be considered on time. **
